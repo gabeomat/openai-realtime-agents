@@ -79,130 +79,40 @@ sequenceDiagram
   - You can modify the decision boundary by adding new items to the `# Allow List of Permitted Actions` section.
 3. To reduce cost, try using `gpt-4o-mini-realtime` for the chatAgent and/or `gpt-4.1-mini` for the supervisor model. To maximize intelligence on particularly difficult or high-stakes tasks, consider trading off latency and adding chain-of-thought to your supervisor prompt, or using an additional reasoning model-based supervisor that uses `o4-mini`.
 
-# Agentic Pattern 2: Sequential Handoffs
+# Mike's Digital Twin Coach
 
-This pattern is inspired by [OpenAI Swarm](https://github.com/openai/swarm) and involves the sequential handoff of a user between specialized agents. Handoffs are decided by the model and coordinated via tool calls, and possible handoffs are defined explicitly in an agent graph. A handoff triggers a session.update event with new instructions and tools. This pattern is effective for handling a variety of user intents with specialist agents, each of which might have long instructions and numerous tools.
+This project implements a digital twin voice agent for Mike, a professional coach who helps people develop resilience, achieve goals, and overcome obstacles through the "underdog mindset."
 
-Here's a [video walkthrough](https://x.com/OpenAIDevs/status/1880306081517432936) showing how it works. You should be able to use this repo to prototype your own multi-agent realtime voice app in less than 20 minutes!
+## The Underdog Coach Agent
 
-![Screenshot of the Realtime API Agents Demo](/public/screenshot_handoff.png)
-*In this simple example, the user is transferred from a greeter agent to a haiku agent. See below for the simple, full configuration of this flow.*
+The agent is built using OpenAI's speech-to-speech Realtime API and is trained on Mike's intellectual property including his book and course content. The agent embodies Mike's personality and coaching methodology, providing authentic coaching experiences.
 
-Configuration in `src/app/agentConfigs/simpleExample.ts`
-```typescript
-import { RealtimeAgent } from '@openai/agents/realtime';
+### Key Features:
+- **Authentic Personality**: Embodies Mike's direct, motivational coaching style
+- **Knowledge Base**: Trained on Mike's book and course content stored in Pinecone vector database
+- **Specialized Tools**: Custom coaching tools for action planning, progress tracking, and framework application
+- **Scope Protection**: Built-in guardrails ensure responses stay within Mike's documented methodologies
 
-// Define agents using the OpenAI Agents SDK
-export const haikuWriterAgent = new RealtimeAgent({
-  name: 'haikuWriter',
-  handoffDescription: 'Agent that writes haikus.', // Context for the agent_transfer tool
-  instructions:
-    'Ask the user for a topic, then reply with a haiku about that topic.',
-  tools: [],
-  handoffs: [],
-});
+Configuration in `src/app/agentConfigs/underdogCoach/index.ts`
+## Knowledge Base Integration
 
-export const greeterAgent = new RealtimeAgent({
-  name: 'greeter',
-  handoffDescription: 'Agent that greets the user.',
-  instructions:
-    "Please greet the user and ask them if they'd like a haiku. If yes, hand off to the 'haikuWriter' agent.",
-  tools: [],
-  handoffs: [haikuWriterAgent], // Define which agents this agent can hand off to
-});
+Mike's coaching agent is powered by a comprehensive knowledge base stored in Pinecone vector database:
 
-// An Agent Set is just an array of the agents that participate in the scenario
-export default [greeterAgent, haikuWriterAgent];
-```
-## CustomerServiceRetail Flow
+- **Book Content**: Mike's complete book chunked and embedded for semantic search
+- **Course Materials**: All course modules, exercises, and frameworks
+- **Coaching Tools**: Specialized tools for action planning, progress tracking, and framework application
+- **Scope Protection**: Built-in validation ensures responses stay within Mike's documented methodologies
 
-This is a more complex, representative implementation that illustrates a customer service flow, with the following features:
-- A more complex agent graph with agents for user authentication, returns, sales, and a placeholder human agent for escalations.
-- An escalation by the [returns](https://github.com/openai/openai-realtime-agents/blob/60f4effc50a539b19b2f1fa4c38846086b58c295/src/app/agentConfigs/customerServiceRetail/returns.ts#L233) agent to `o4-mini` to validate and initiate a return, as an example high-stakes decision, using a similar pattern to the above.
-- Prompting models to follow a state machine, for example to accurately collect things like names and phone numbers with confirmation character by character to authenticate a user.
-  - To test this flow, say that you'd like to return your snowboard and go through the necessary prompts!
+The agent uses Multilingual-E5-Large embeddings for optimal semantic understanding and retrieval of relevant coaching content.
 
-Configuration in [src/app/agentConfigs/customerServiceRetail/index.ts](src/app/agentConfigs/customerServiceRetail/index.ts).
-```javascript
-import authentication from "./authentication";
-import returns from "./returns";
-import sales from "./sales";
-import simulatedHuman from "./simulatedHuman";
-import { injectTransferTools } from "../utils";
+## Getting Started
 
-authentication.downstreamAgents = [returns, sales, simulatedHuman];
-returns.downstreamAgents = [authentication, sales, simulatedHuman];
-sales.downstreamAgents = [authentication, returns, simulatedHuman];
-simulatedHuman.downstreamAgents = [authentication, returns, sales];
+1. **Clone and Setup**: Follow the installation instructions in the original README
+2. **Configure Environment**: Add your OpenAI API key and Pinecone credentials
+3. **Upload Content**: Use the n8n workflow to upload Mike's book and course content to Pinecone
+4. **Test the Agent**: Start the application and begin coaching conversations with Mike's digital twin
 
-const agents = injectTransferTools([
-  authentication,
-  returns,
-  sales,
-  simulatedHuman,
-]);
-
-export default agents;
-```
-
-## Schematic
-
-This diagram illustrates a more advanced interaction flow defined in `src/app/agentConfigs/customerServiceRetail/`, including detailed events.
-
-<details>
-<summary><strong>Show CustomerServiceRetail Flow Diagram</strong></summary>
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant WebClient as Next.js Client
-    participant NextAPI as /api/session
-    participant RealtimeAPI as OpenAI Realtime API
-    participant AgentManager as Agents (authentication, returns, sales, simulatedHuman)
-    participant o1mini as "o4-mini" (Escalation Model)
-
-    Note over WebClient: User navigates to ?agentConfig=customerServiceRetail
-    User->>WebClient: Open Page
-    WebClient->>NextAPI: GET /api/session
-    NextAPI->>RealtimeAPI: POST /v1/realtime/sessions
-    RealtimeAPI->>NextAPI: Returns ephemeral session
-    NextAPI->>WebClient: Returns ephemeral token (JSON)
-
-    Note right of WebClient: Start RTC handshake
-    WebClient->>RealtimeAPI: Offer SDP (WebRTC)
-    RealtimeAPI->>WebClient: SDP answer
-    WebClient->>WebClient: DataChannel "oai-events" established
-
-    Note over AgentManager: Default agent is "authentication"
-    User->>WebClient: "Hi, I'd like to return my snowboard."
-    WebClient->>AgentManager: conversation.item.create (role=user)
-    WebClient->>RealtimeAPI: {type: "conversation.item.create"}
-    WebClient->>RealtimeAPI: {type: "response.create"}
-
-    authentication->>AgentManager: Requests user info, calls authenticate_user_information()
-    AgentManager-->>WebClient: function_call => name="authenticate_user_information"
-    WebClient->>WebClient: handleFunctionCall => verifies details
-
-    Note over AgentManager: After user is authenticated
-    authentication->>AgentManager: transferAgents("returns")
-    AgentManager-->>WebClient: function_call => name="transferAgents" args={ destination: "returns" }
-    WebClient->>WebClient: setSelectedAgentName("returns")
-
-    Note over returns: The user wants to process a return
-    returns->>AgentManager: function_call => checkEligibilityAndPossiblyInitiateReturn
-    AgentManager-->>WebClient: function_call => name="checkEligibilityAndPossiblyInitiateReturn"
-
-    Note over WebClient: The WebClient calls /api/chat/completions with model="o4-mini"
-    WebClient->>o1mini: "Is this item eligible for return?"
-    o1mini->>WebClient: "Yes/No (plus notes)"
-
-    Note right of returns: Returns uses the result from "o4-mini"
-    returns->>AgentManager: "Return is approved" or "Return is denied"
-    AgentManager->>WebClient: conversation.item.create (assistant role)
-    WebClient->>User: Displays final verdict
-```
-
-</details>
+The agent will automatically use Mike's knowledge base to provide authentic coaching responses based on his documented methodologies and personal experiences.
 
 # Other Info
 ## Next Steps
